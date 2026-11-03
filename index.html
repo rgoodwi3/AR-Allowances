@@ -227,6 +227,7 @@ table.aging{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:12p
 
 .actions{display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--rule);align-items:center;justify-content:space-between}
 .actions .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.actions .grp:last-child{margin-left:auto}
 .actions .ask{font-size:13.5px;font-weight:600}
 .btn{border:1px solid var(--rule-strong);background:var(--sheet);border-radius:6px;padding:7px 12px;font-size:14.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:36px}
 .btn:hover{background:var(--brand-soft)}
@@ -448,7 +449,7 @@ function gen(seed){
       else if(id!=="cash1")ar+=v[id];
       if(ar<0)ok=false;});
     if(!ok)continue;
-    const arJun=ar, pct=R(2,6), tot1=arJun*pct/100;
+    const arJun=ar, netCS=v.s1+v.c1+v.s2-v.ret1, pct=R(2,4), tot1=netCS*pct/100; // June 30: percent of net credit sales
     if(!Number.isInteger(tot1)||tot1<700)continue;
     const debit=r()<0.4;
     v.w1=R(200,Math.min(1500,tot1-300),100);
@@ -476,7 +477,7 @@ function gen(seed){
     const dt=id=>MS[DT[id].m]+" "+DT[id].d;
     const tmp=tot1-v.w1-v.w2; // allowance right after the second write-off (before the recovery)
     const creditSalesH1=v.s1+v.c1+v.s2;
-    const info={v,arJun,pct,tot1,arDec,bal,b,p,e,tot2,bde2,cust1,cust2,debit,creditSalesH1};
+    const info={v,arJun,netCS,pct,tot1,arDec,bal,b,p,e,tot2,bde2,cust1,cust2,debit,creditSalesH1};
 
     const sale=(amt,n)=>({title:n?"Sell more guides on account":"Sell guides on account",kind:"Sale on account",
       desc:"Sold how-to guides to corporate clients on account for "+d$(amt)+", terms n/30.",
@@ -531,25 +532,25 @@ function gen(seed){
       else steps.push(Object.assign({type:"entry",phase,ref:String(n),date:dt(id),md:DT[id]},t));};
     o1.forEach(id=>add("h1",id));
     const JUN={m:5,d:30}, DEC={m:11,d:31};
-    steps.push({type:"calc",phase:"est1",ref:"%",tickLabel:"%",date:"Jun 30",md:JUN,kind:"Estimate · percent of receivables",
-      title:"Estimate bad debts: percent of receivables",
-      desc:"Problem Solvers expects "+pct+"% of the receivables it holds on June 30 to go uncollected. This is its first estimate, so the Allowance for Doubtful Accounts has no balance yet.",
-      given:"Estimated uncollectible rate: <b>"+pct+"%</b> of Accounts Receivable",
-      hint:"Required allowance balance = Accounts Receivable balance × "+pct+"%. Bad debt expense = required balance − the balance already in the allowance.",
-      why:"The percent-of-receivables method is a balance sheet approach: it sets the allowance to the part of receivables that is not expected to be collected, so the balance sheet reports receivables at net realizable value. Bad debt expense is the amount needed to bring the allowance to that balance.",
+    steps.push({type:"calc",phase:"est1",ref:"%",tickLabel:"%",date:"Jun 30",md:JUN,kind:"Estimate · percent of credit sales",
+      title:"Estimate bad debts: percent of credit sales",
+      desc:"Problem Solvers expects "+pct+"% of its net credit sales for January through June to go uncollected. This is its first estimate, so the Allowance for Doubtful Accounts has no balance yet.",
+      given:"Estimated uncollectible rate: <b>"+pct+"%</b> of net credit sales",
+      hint:"Net credit sales = sales and services on account − sales returns. Bad debt expense = net credit sales × "+pct+"%. The allowance's new balance = the balance already in it + bad debt expense.",
+      why:"The percent-of-credit-sales method is an income statement approach: it estimates bad debt expense directly from the period's credit sales, matching the expense to the sales that created it. The expense is added to whatever is already in the allowance. Cash sales are left out because they carry no collection risk.",
       fields:[
-       {id:"ar",label:"Accounts Receivable balance, June 30",sub:"Read it from the Accounts Receivable T-account.",ans:arJun,work:"Debits − credits in Accounts Receivable = "+d$(arJun),
-        wrong:x=>x===creditSalesH1?"That is the total billed to customers. Subtract the return and the collections (the credits in the T-account).":"Accounts Receivable balance = total debits − total credits in the T-account."},
-       {id:"req",label:"Required ending balance in the allowance",ans:tot1,work:d$(arJun)+" × "+pct+"% = "+d$(tot1),
-        wrong:x=>x===creditSalesH1*pct/100?"That applies the rate to sales on account. The percent-of-receivables method applies it to the Accounts Receivable balance.":x===arJun*pct?"Convert the percentage first: "+pct+"% = 0.0"+pct+".":"Multiply the June 30 Accounts Receivable balance by "+pct+"%."},
+       {id:"ncs",label:"Net credit sales, January 1 to June 30",sub:"Sales of guides and consulting services on account, less sales returns. Use the journal or the revenue T-accounts.",ans:netCS,work:d$(v.s1)+" + "+d$(v.c1)+" + "+d$(v.s2)+" on account − "+d$(v.ret1)+" returned = "+d$(netCS),
+        wrong:x=>x===creditSalesH1?"That is total sales on account. Subtract the "+d$(v.ret1)+" sales return to get net credit sales.":(x===netCS+v.cash1||x===creditSalesH1+v.cash1)?"Leave out the "+d$(v.cash1)+" cash sale. Cash sales carry no collection risk, so they are not credit sales.":x===arJun?"That is the Accounts Receivable balance. The percent-of-credit-sales method uses the period's credit sales, not the receivable balance.":"Add the sales and services on account, then subtract the sales return. Leave out the cash sale."},
+       {id:"bde",label:"Bad debt expense to record",ans:tot1,work:d$(netCS)+" × "+pct+"% = "+d$(tot1),
+        wrong:x=>x===arJun*pct/100?"That applies the rate to the Accounts Receivable balance (the percent-of-receivables method). Apply it to net credit sales.":x===creditSalesH1*pct/100?"Apply the rate to net credit sales: subtract the sales return first.":x===netCS*pct?"Convert the percentage first: "+pct+"% = 0.0"+pct+".":"Multiply net credit sales by "+pct+"%."},
        {id:"cur",label:"Allowance balance before this adjustment",sub:"Enter 0 if there is no balance.",ans:0,work:"First estimate of the year, so the allowance has no balance: $0",
         wrong:()=>"This is the company's first estimate, so the Allowance for Doubtful Accounts has no balance yet."},
-       {id:"bde",label:"Bad debt expense to record",ans:tot1,work:d$(tot1)+" required − $0 already in the allowance = "+d$(tot1),
-        wrong:(x,f)=>"Bad debt expense = required ending balance − the balance already in the allowance."}
+       {id:"end",label:"Allowance balance after this adjustment",ans:tot1,work:"$0 already in the allowance + "+d$(tot1)+" bad debt expense = "+d$(tot1),
+        wrong:()=>"Under the percent-of-credit-sales method, the expense is added to the balance already in the allowance."}
       ]});
     steps.push({type:"entry",phase:"est1",ref:"A1",date:"Jun 30",md:JUN,kind:"Adjusting entry",
       title:"Record the June 30 bad debt estimate",desc:"Record the bad debt expense you calculated in the previous step.",
-      calc:d$(arJun)+" × "+pct+"% = "+d$(tot1)+" required − $0 existing = "+d$(tot1),
+      calc:d$(netCS)+" net credit sales × "+pct+"% = "+d$(tot1),
       lines:[{a:"bde",dr:tot1},{a:"afda",cr:tot1}],
       why:"Bad Debt Expense puts the cost of uncollectible accounts in the same period as the sales that created them. The credit goes to the allowance, a contra-asset, because Problem Solvers doesn't know yet which customers won't pay. Net realizable value falls by "+d$(tot1)+"; Accounts Receivable itself doesn't change.",
       miss:{ar:"Credit the allowance, not Accounts Receivable. Problem Solvers doesn't know yet which customers won't pay, so their balances stay in Accounts Receivable.",cash:"Estimating bad debts involves no cash.",sra:"Sales Returns and Allowances is for goods customers return. Uncollectible accounts go through Bad Debt Expense and the allowance.",sales:"The sales were valid. Estimated bad debts are recorded as an expense, not a reduction of Sales Revenue."},
@@ -562,7 +563,7 @@ function gen(seed){
       desc:"At year-end Problem Solvers ages its receivables: older accounts are less likely to be collected, so they get a higher rate. Complete the aging schedule, then work out the adjustment. The allowance T-account shows its balance before the adjustment.",
       aging:{lab:ageLab,b,p,e},
       hint:"Estimated uncollectible = balance × rate for each age group; add them for the required allowance balance. Then bad debt expense = required balance − an existing credit balance, or + an existing debit balance.",
-      why:"Like percent of receivables, aging is a balance sheet approach, but it uses higher rates for older accounts. The aging total becomes the allowance's ending balance. Bad debt expense is whatever adjustment gets the allowance there, so it depends on the balance already in the account"+(debit?". Here write-offs used up more than the allowance held, so the adjustment must first cover that debit balance.":"."),
+      why:"Unlike the June 30 percent-of-credit-sales estimate, aging is a balance sheet approach: it uses higher rates for older accounts to estimate how much of the receivables won't be collected. The aging total becomes the allowance's ending balance. Bad debt expense is whatever adjustment gets the allowance there, so it depends on the balance already in the account"+(debit?". Here write-offs used up more than the allowance held, so the adjustment must first cover that debit balance.":"."),
       fields:b.map((x,i)=>({id:"e"+i,aging:i,ans:e[i],work:d$(x)+" × "+p[i]+"% = "+d$(e[i]),
         wrong:y=>y===x*p[i]?"Convert the percentage first: "+p[i]+"% = "+(p[i]/100)+".":y===x?"Multiply the balance by the "+p[i]+"% rate.":"Multiply this age group's balance by its "+p[i]+"% rate."})).concat([
        {id:"req",label:"Required ending balance in the allowance",sub:"Total of the aging schedule.",ans:tot2,work:e.map(d$).join(" + ")+" = "+d$(tot2),
