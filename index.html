@@ -754,6 +754,13 @@ function rebuildBooks(){
   for(let i=0;i<N;i++){postStep(bk,STEPS[i],i);BOOKS.push(JSON.parse(JSON.stringify(bk)));}
   MAXAR=Math.max(...BOOKS.map(b=>nbal(b,"ar")),1);
 }
+// Classes that hide answers send no solution. A student can only post an entry once every line is right,
+// so their own corrected entry is the correct one: post it to the journal, T-accounts and balance sheet.
+// It reveals nothing they haven't already entered. Corrected entries are kept in this browser so a reload keeps them.
+function ownLines(rows){return (rows||[]).map(r=>({a:r.a,dr:parseAmt(r.dr)||0,cr:parseAmt(r.cr)||0})).filter(l=>l.a&&(l.dr||l.cr));}
+function ownKey(){return "arlab1.own."+(GS&&GS.id);}
+function ownLoad(){try{return JSON.parse(localStorage.getItem(ownKey())||"{}")||{};}catch(e){return {};}}
+function ownSave(i,lines){try{const o=ownLoad();o[i]=lines;localStorage.setItem(ownKey(),JSON.stringify(o));}catch(e){}}
 // Build the page state from the server's "problem" response: public steps, saved points, returned solutions.
 function applyProblem(p){
   if(MODE==="practice"&&G)save();
@@ -763,9 +770,13 @@ function applyProblem(p){
   GS={id:p.attempt_id,course:COURSE,startedAt:p.started_at,finishedAt:p.finished_at||null,
     score:p.score==null?null:p.score,total:p.total==null?null:p.total,max:p.max_points.slice(),pts:[],done:[],err:null};
   status=new Array(N).fill(null);
+  const own=ownLoad();
   Object.keys(p.progress||{}).forEach(key=>{const i=+key, r=p.progress[key];
     GS.done[i]=true; GS.pts[i]=r.points; status[i]=r.points===r.maxPoints?"first":"retry";
-    if(r.solution)applySolution(i,r.solution);});
+    if(r.solution)applySolution(i,r.solution);
+    else if(STEPS[i]&&STEPS[i].type==="entry"){
+      const ln=r.points===r.maxPoints&&r.answer&&r.answer.rows?ownLines(r.answer.rows):(own[i]||null);
+      if(ln&&ln.length)STEPS[i].lines=ln;}});
   rebuildBooks(); setChip(); buildTimeline();
   k=GS.finishedAt?N:Math.max(0,Math.min(N,p.next_step|0)); recap=false; startForm();
 }
@@ -804,6 +815,8 @@ async function submitGraded(s){
     if(!graded()||k!==i)return;
     F.tries++; F.fb=r.feedback; GS.done[i]=true; GS.pts[i]=r.points;
     if(r.solution){applySolution(i,r.solution);rebuildBooks();}
+    else if(s.type==="entry"&&(r.correct||(r.feedback&&r.feedback.all))){
+      const ln=ownLines(answer.rows); if(ln.length){s.lines=ln;ownSave(i,ln);rebuildBooks();}}
     if(s.type==="calc"&&F.fb.all)status[i]=GS.pts[i]===maxPts(i)?"first":"retry";
     BUSY=false; render(false);
     const bad=$("entry").querySelector(".line.bad-a select,.line.bad-s input.filled,.line.bad-n input,.field.no input,.aging tr.no input");
@@ -949,7 +962,7 @@ function stepAccounts(i){return i>=0&&i<N?new Set((STEPS[i].lines||[]).map(l=>l.
 function lastEntryBefore(i){for(let j=i-1;j>=0;j--)if(STEPS[j].type==="entry"&&STEPS[j].lines)return j;return -1;}
 // Graded mode: how many posted entries the views can't show because the server returned no solution for them.
 function hiddenPosted(){let n=0;for(let i=0;i<k&&i<N;i++)if(STEPS[i].type==="entry"&&!STEPS[i].lines)n++;return n;}
-function hiddenNote(){const n=hiddenPosted();return n?'<div class="bs-note">Your class doesn\'t show answers in Graded mode, so '+(n===1?"1 entry you posted is":n+" entries you posted are")+' left out of this view.</div>':"";}
+function hiddenNote(){const n=hiddenPosted();return n?'<div class="bs-note">'+(n===1?"1 entry you fixed after a wrong first try isn't":n+" entries you fixed after a wrong first try aren't")+' shown here, because it was corrected on another device or browser. Your class doesn\'t show answers in Graded mode.</div>':"";}
 
 // ---------- timeline ----------
 const PH={h1:{g:"h",label:"Sales · Jan–Jun"},est1:{g:"est",label:"Jun 30 estimate"},h2:{g:"h",label:"Activity · Jul–Dec"},est2:{g:"est",label:"Dec 31 estimate"},bs:{g:"bs",label:"Report"}};
